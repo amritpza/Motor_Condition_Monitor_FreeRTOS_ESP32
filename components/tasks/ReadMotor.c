@@ -7,36 +7,49 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
+#include "esp_dsp.h"
+
 #include "mpu6050.h"
 
-//#define FFT_SIZE     256
+#define FFT_SIZE  256
+static float fft_buffer[FFT_SIZE * 2];
+static float hann_window[FFT_SIZE];
 
-/**
- * @brief Calculate dominant frequency from a block of acceleration samples.
- *
- * samples:      200 acceleration magnitude samples
- * sample_rate:  200 Hz
- *
- * NOTE:
- * Implement using ESP-DSP FFT.
- */
-static float calculate_dominant_frequency(const float* samples, uint16_t sample_count, float sample_rate_hz){
-	/* TODO:
-	*
-	* 1. Copy samples into FFT buffer.
-	* 2. Remove mean (DC offset).
-	* 3. Apply Hann window.
-	* 4. Zero pad to FFT_SIZE.
-	* 5. Run FFT.
-	* 6. Find strongest bin.
-	* 7. Convert bin -> Hz.
-	*/
+static float calculate_dominant_frequency(const float* const samples, const uint16_t sample_count, const float sample_rate_hz){
+	float mean = 0.0f;
 
-	return 6.7f;
+	for(uint16_t i = 0; i < sample_count; i++) mean += samples[i];
+	mean /= sample_count;
+
+	for(uint16_t i = 0; i < sample_count; i++){
+	    fft_buffer[2 * i] = (samples[i] - mean) * hann_window[i]; // re
+	    fft_buffer[2 * i + 1] = 0.0f; // im
+	}
+
+	dsps_fft2r_fc32(fft_buffer, sample_count);
+	dsps_bit_rev_fc32(fft_buffer, sample_count);
+	dsps_cplx2reC_fc32(fft_buffer, sample_count);
+
+	uint16_t peak_bin = 1;
+	float peak_mag = 0.0f;
+
+	for(uint16_t bin = 1; bin < sample_count / 2; bin++){
+	    float re = fft_buffer[2 * bin];
+	    float im = fft_buffer[2 * bin + 1];
+
+	    float mag = re * re + im * im;
+
+	    if(mag > peak_mag){
+	        peak_mag = mag;
+	        peak_bin = bin;
+	    }
+	}
+
+	return ((float)peak_bin * sample_rate_hz) / sample_count;
 }
 
-static float accel_mag_samples[MPU6050_SAMPLE_RATE_HZ];
-static size_t sample_index = 0;
+static float accel_mag_samples[FFT_SIZE];
+static uint16_t sample_index = 0;
 
 static QueueHandle_t motor_metrics_queue;
 
@@ -45,6 +58,8 @@ void vTask_ReadMotor(void *pvParameters){
 	float gyro_sum_sqr  = 0.0f;
 
 	float accel_peak = 0.0f;
+
+	dsps_wind_hann_f32(hann_window, FFT_SIZE);
 
 	while(1){
 		uint32_t mpu6050_sample_ready = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -75,19 +90,19 @@ void vTask_ReadMotor(void *pvParameters){
 
 			accel_peak = fmaxf(accel_peak, fabsf(accel_mag));
 
-			if(sample_index >= MPU6050_SAMPLE_RATE_HZ){
+			if(sample_index >= FFT_SIZE){
 				motor_metrics_t motor_stats = {0};
 
-				motor_stats.accel_rms = sqrtf(accel_sum_sqr / MPU6050_SAMPLE_RATE_HZ);
+				motor_stats.accel_rms = sqrtf(accel_sum_sqr / FFT_SIZE);
 
-				motor_stats.gyro_rms = sqrtf(gyro_sum_sqr / MPU6050_SAMPLE_RATE_HZ);
+				motor_stats.gyro_rms = sqrtf(gyro_sum_sqr / FFT_SIZE);
 
 				motor_stats.accel_peak = accel_peak;
 
 				if(motor_stats.accel_rms > 0.0001f)
 					motor_stats.crest_factor = accel_peak / motor_stats.accel_rms;
 
-				motor_stats.dominant_freq_hz = calculate_dominant_frequency(accel_mag_samples, MPU6050_SAMPLE_RATE_HZ, MPU6050_SAMPLE_RATE_HZ);
+				motor_stats.dominant_freq_hz = calculate_dominant_frequency(accel_mag_samples, FFT_SIZE, MPU6050_SAMPLE_RATE_HZ);
 
 				motor_stats.temperature_c = motor_data.temperature_c;
 
@@ -121,9 +136,9 @@ BaseType_t motor_metrics_queue_receive(motor_metrics_t* const data_rx){
 
 bool motor_metrics_is_zero(const motor_metrics_t* const m){
 	return m->accel_rms        == 0.0f &&
-				 m->gyro_rms         == 0.0f &&
-				 m->accel_peak       == 0.0f &&
-         m->crest_factor     == 0.0f &&
-				 m->dominant_freq_hz == 0.0f &&
-				 m->temperature_c    == 0.0f;
+		   m->gyro_rms         == 0.0f &&
+		   m->accel_peak       == 0.0f &&
+           m->crest_factor     == 0.0f &&
+		   m->dominant_freq_hz == 0.0f &&
+		   m->temperature_c    == 0.0f;
 }

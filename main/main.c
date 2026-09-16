@@ -8,6 +8,8 @@
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 
+#include "esp_dsp.h"
+
 #include "lcd_i2c.h"
 #include "mpu6050.h"
 #include "ext_serial.h"
@@ -65,6 +67,8 @@ void app_main(){
 		.i2c_bus      = i2c_bus,
 	};
 	ESP_ERROR_CHECK(mpu6050_init(&mpu_config));
+
+	ESP_ERROR_CHECK(dsps_fft2r_init_fc32(NULL, CONFIG_DSP_MAX_FFT_SIZE));
 
 	gpio_install_isr_service(0);
 	gpio_isr_handler_add(mpu6050_int_pin, mpu6050_int_pin_isr, NULL);
