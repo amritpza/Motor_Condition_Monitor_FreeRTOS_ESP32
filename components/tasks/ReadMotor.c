@@ -1,11 +1,9 @@
 #include "ReadMotor.h"
 
-#include <stdio.h>
 #include <math.h>
 
+#include "esp_err.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
 
 #include "esp_dsp.h"
 
@@ -53,6 +51,8 @@ static uint16_t sample_index = 0;
 
 static QueueHandle_t motor_metrics_queue;
 
+static SemaphoreHandle_t i2c_mutex;
+
 void vTask_ReadMotor(void *pvParameters){
 	float accel_sum_sqr = 0.0f;
 	float gyro_sum_sqr  = 0.0f;
@@ -61,13 +61,22 @@ void vTask_ReadMotor(void *pvParameters){
 
 	dsps_wind_hann_f32(hann_window, FFT_SIZE);
 
+	motor_metrics_queue = xQueueCreate(1, sizeof(motor_metrics_t));
+	if(motor_metrics_queue == NULL) ESP_ERROR_CHECK(ESP_ERR_NOT_FOUND);
+
 	while(1){
 		uint32_t mpu6050_sample_ready = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
 		if(mpu6050_sample_ready){ // RX MPU6050 sample when data ready via ISR 
 			mpu6050_data_t motor_data = {0};
 
-			if(mpu6050_read(&motor_data) != ESP_OK){
+			esp_err_t err = ESP_FAIL;
+			if(take_i2c_mutex()){
+				err = mpu6050_read(&motor_data);
+				give_i2c_mutex();
+			}
+
+			if(err != ESP_OK){
 				motor_metrics_t motor_stats = {0};
 				xQueueOverwrite(motor_metrics_queue, &motor_stats);
 				continue;
@@ -124,14 +133,22 @@ void vTask_ReadMotor(void *pvParameters){
 	}
 }
 
-esp_err_t motor_metrics_queue_init(){
-	motor_metrics_queue = xQueueCreate(1, sizeof(motor_metrics_t));
-	if(motor_metrics_queue == NULL) return ESP_ERR_NOT_FOUND;
+BaseType_t motor_metrics_queue_receive(motor_metrics_t* const data_rx){
+	return xQueueReceive(motor_metrics_queue, data_rx, portMAX_DELAY);
+}
+
+esp_err_t i2c_mutex_init(){
+	i2c_mutex = xSemaphoreCreateMutex();
+	if(i2c_mutex == NULL) return ESP_ERR_NOT_FOUND;
 	return ESP_OK;
 }
 
-BaseType_t motor_metrics_queue_receive(motor_metrics_t* const data_rx){
-	return xQueueReceive(motor_metrics_queue, data_rx, portMAX_DELAY);
+BaseType_t take_i2c_mutex(){
+	return xSemaphoreTake(i2c_mutex, portMAX_DELAY);
+}
+
+BaseType_t give_i2c_mutex(){
+	return xSemaphoreGive(i2c_mutex);
 }
 
 bool motor_metrics_is_zero(const motor_metrics_t* const m){

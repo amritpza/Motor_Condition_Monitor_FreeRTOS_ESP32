@@ -1,10 +1,5 @@
 #include "UIManager.h"
 
-#include <stdio.h>
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-
 #include "ext_serial.h"
 
 #define MENU_INPUT_SIZE 5

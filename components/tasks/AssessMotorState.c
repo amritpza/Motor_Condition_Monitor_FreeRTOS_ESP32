@@ -1,10 +1,6 @@
 #include "AssessMotorState.h"
 
-#include <stdbool.h>
-
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
 
 #include "ReadMotor.h"
 
@@ -45,38 +41,38 @@
 
 static bool warning_enter(const motor_metrics_t* const m){
 	return ((m->accel_rms >= A_RMS_WARNING_ENTER) ||
-					(m->crest_factor >= CF_WARNING_ENTER) ||
-					(m->temperature_c >= TEMP_WARNING_ENTER));
+			(m->crest_factor >= CF_WARNING_ENTER) ||
+			(m->temperature_c >= TEMP_WARNING_ENTER));
 }
 
 static bool warning_exit(const motor_metrics_t* const m){
 	return ((m->accel_rms < A_RMS_WARNING_EXIT) &&
-					(m->crest_factor < CF_WARNING_EXIT) &&
-					(m->temperature_c < TEMP_WARNING_EXIT));
+			(m->crest_factor < CF_WARNING_EXIT) &&
+			(m->temperature_c < TEMP_WARNING_EXIT));
 }
 
 static bool alarm_enter(const motor_metrics_t* const m){
 	return ((m->accel_rms >= A_RMS_ALARM_ENTER) ||
-					(m->crest_factor >= CF_ALARM_ENTER) ||
-					(m->temperature_c >= TEMP_ALARM_ENTER));
+			(m->crest_factor >= CF_ALARM_ENTER) ||
+			(m->temperature_c >= TEMP_ALARM_ENTER));
 }
 
 static bool alarm_exit(const motor_metrics_t* const m){
 	return ((m->accel_rms < A_RMS_ALARM_EXIT) &&
-					(m->crest_factor < CF_ALARM_EXIT) &&
-					(m->temperature_c < TEMP_ALARM_EXIT));
+			(m->crest_factor < CF_ALARM_EXIT) &&
+			(m->temperature_c < TEMP_ALARM_EXIT));
 }
 
 static bool fault_enter(const motor_metrics_t* const m){
 	return ((m->accel_rms >= A_RMS_FAULT_ENTER) ||
-					(m->crest_factor >= CF_FAULT_ENTER) ||
-					(m->temperature_c >= TEMP_FAULT_ENTER));
+			(m->crest_factor >= CF_FAULT_ENTER) ||
+			(m->temperature_c >= TEMP_FAULT_ENTER));
 }
 
 static bool fault_exit(const motor_metrics_t* const m){
 	return ((m->accel_rms < A_RMS_FAULT_EXIT) &&
-					(m->crest_factor < CF_FAULT_EXIT) &&
-					(m->temperature_c < TEMP_FAULT_EXIT));
+			(m->crest_factor < CF_FAULT_EXIT) &&
+			(m->temperature_c < TEMP_FAULT_EXIT));
 }
 
 static Motor_State get_motor_state(const motor_metrics_t* const m){
@@ -191,14 +187,18 @@ void vTask_AssessMotorState(void *pvParameters){
 			else if(curr_motor_state == STATE_FAULT_PENDING) lcd_msg = "CHECKING FAULT..";
 			else if(curr_motor_state == STATE_FAULT)         lcd_msg = "MOTOR FAULTED";
 
-			ESP_ERROR_CHECK(lcd_i2c_clear());
+			if(take_i2c_mutex()){
+				ESP_ERROR_CHECK(lcd_i2c_clear());
 
-			ESP_ERROR_CHECK(lcd_i2c_set_cursor(0, 0));
-			if(curr_motor_state != STATE_UNKNOWN) ESP_ERROR_CHECK(lcd_i2c_write("Motor Condition"));
-			else ESP_ERROR_CHECK(lcd_i2c_write("ERROR: Unable to"));
+				ESP_ERROR_CHECK(lcd_i2c_set_cursor(0, 0));
+				if(curr_motor_state != STATE_UNKNOWN) ESP_ERROR_CHECK(lcd_i2c_write("Motor Condition"));
+				else ESP_ERROR_CHECK(lcd_i2c_write("ERROR: Unable to"));
 
-			ESP_ERROR_CHECK(lcd_i2c_set_cursor(0, 1));
-			ESP_ERROR_CHECK(lcd_i2c_write(lcd_msg));
+				ESP_ERROR_CHECK(lcd_i2c_set_cursor(0, 1));
+				ESP_ERROR_CHECK(lcd_i2c_write(lcd_msg));
+
+				give_i2c_mutex();
+			}
 
 			prev_motor_state = curr_motor_state;
 		}

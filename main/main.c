@@ -1,9 +1,4 @@
-#include <stdio.h>
-#include <time.h>
-#include <sys/time.h>
-
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
@@ -68,12 +63,12 @@ void app_main(){
 	};
 	ESP_ERROR_CHECK(mpu6050_init(&mpu_config));
 
-	ESP_ERROR_CHECK(dsps_fft2r_init_fc32(NULL, CONFIG_DSP_MAX_FFT_SIZE));
-
 	gpio_install_isr_service(0);
 	gpio_isr_handler_add(mpu6050_int_pin, mpu6050_int_pin_isr, NULL);
 
-	ESP_ERROR_CHECK(motor_metrics_queue_init());
+	ESP_ERROR_CHECK(dsps_fft2r_init_fc32(NULL, CONFIG_DSP_MAX_FFT_SIZE));
+
+	ESP_ERROR_CHECK(i2c_mutex_init());
 
 	xTaskCreate(vTask_ReadMotor, "read_motor", 4096, NULL, 5, &read_motor_task_handle);
 	xTaskCreate(vTask_AssessMotorState, "assess_motor_state", 4096, NULL, 4, NULL);

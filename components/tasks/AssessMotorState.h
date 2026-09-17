@@ -1,8 +1,6 @@
 #ifndef ASSESSMOTORSTATE_H
 #define ASSESSMOTORSTATE_H
 
-#include "freertos/FreeRTOS.h"
-
 typedef enum{
 	STATE_NONE = -1,
 	STATE_UNKNOWN,
