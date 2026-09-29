@@ -2,7 +2,6 @@
 
 #include <math.h>
 
-#include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 
 #include "esp_dsp.h"
@@ -49,7 +48,7 @@ static float calculate_dominant_frequency(const float* const samples, const uint
 static float accel_mag_samples[FFT_SIZE];
 static uint16_t sample_index = 0;
 
-static QueueHandle_t motor_metrics_queue;
+static QueueHandle_t motor_info_queue;
 
 static SemaphoreHandle_t i2c_mutex;
 
@@ -61,8 +60,8 @@ void vTask_ReadMotor(void *pvParameters){
 
 	dsps_wind_hann_f32(hann_window, FFT_SIZE);
 
-	motor_metrics_queue = xQueueCreate(1, sizeof(motor_metrics_t));
-	if(motor_metrics_queue == NULL) ESP_ERROR_CHECK(ESP_ERR_NOT_FOUND);
+	motor_info_queue = xQueueCreate(1, sizeof(motor_metrics_t));
+	if(motor_info_queue == NULL) ESP_ERROR_CHECK(ESP_ERR_NOT_FOUND);
 
 	while(1){
 		uint32_t mpu6050_sample_ready = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -77,8 +76,8 @@ void vTask_ReadMotor(void *pvParameters){
 			}
 
 			if(err != ESP_OK){
-				motor_metrics_t motor_stats = {0};
-				xQueueOverwrite(motor_metrics_queue, &motor_stats);
+				motor_metrics_t motor_info = {0};
+				xQueueOverwrite(motor_info_queue, &motor_info);
 				continue;
 			}
 
@@ -100,22 +99,22 @@ void vTask_ReadMotor(void *pvParameters){
 			accel_peak = fmaxf(accel_peak, fabsf(accel_mag));
 
 			if(sample_index >= FFT_SIZE){
-				motor_metrics_t motor_stats = {0};
+				motor_metrics_t motor_info = {0};
 
-				motor_stats.accel_rms = sqrtf(accel_sum_sqr / FFT_SIZE);
+				motor_info.accel_rms = sqrtf(accel_sum_sqr / FFT_SIZE);
 
-				motor_stats.gyro_rms = sqrtf(gyro_sum_sqr / FFT_SIZE);
+				motor_info.gyro_rms = sqrtf(gyro_sum_sqr / FFT_SIZE);
 
-				motor_stats.accel_peak = accel_peak;
+				motor_info.accel_peak = accel_peak;
 
-				if(motor_stats.accel_rms > 0.0001f)
-					motor_stats.crest_factor = accel_peak / motor_stats.accel_rms;
+				if(motor_info.accel_rms > 0.0001f)
+					motor_info.crest_factor = accel_peak / motor_info.accel_rms;
 
-				motor_stats.dominant_freq_hz = calculate_dominant_frequency(accel_mag_samples, FFT_SIZE, MPU6050_SAMPLE_RATE_HZ);
+				motor_info.dominant_freq_hz = calculate_dominant_frequency(accel_mag_samples, FFT_SIZE, MPU6050_SAMPLE_RATE_HZ);
 
-				motor_stats.temperature_c = motor_data.temperature_c;
+				motor_info.temperature_c = motor_data.temperature_c;
 
-				xQueueOverwrite(motor_metrics_queue, &motor_stats);
+				xQueueOverwrite(motor_info_queue, &motor_info);
 
 				sample_index = 0;
 
@@ -127,14 +126,14 @@ void vTask_ReadMotor(void *pvParameters){
 		}
 
 		else{
-			motor_metrics_t motor_stats = {0};
-			xQueueOverwrite(motor_metrics_queue, &motor_stats);
+			motor_metrics_t motor_info = {0};
+			xQueueOverwrite(motor_info_queue, &motor_info);
 		}
 	}
 }
 
-BaseType_t motor_metrics_queue_receive(motor_metrics_t* const data_rx){
-	return xQueueReceive(motor_metrics_queue, data_rx, portMAX_DELAY);
+BaseType_t motor_info_queue_receive(motor_metrics_t* const data_rx){
+	return xQueueReceive(motor_info_queue, data_rx, portMAX_DELAY);
 }
 
 esp_err_t i2c_mutex_init(){

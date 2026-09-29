@@ -63,14 +63,17 @@ void app_main(){
 	};
 	ESP_ERROR_CHECK(mpu6050_init(&mpu_config));
 
-	gpio_install_isr_service(0);
+	gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
 	gpio_isr_handler_add(mpu6050_int_pin, mpu6050_int_pin_isr, NULL);
 
 	ESP_ERROR_CHECK(dsps_fft2r_init_fc32(NULL, CONFIG_DSP_MAX_FFT_SIZE));
 
 	ESP_ERROR_CHECK(i2c_mutex_init());
+	ESP_ERROR_CHECK(motor_thresholds_mutex_init());
+	ESP_ERROR_CHECK(serial_print_from_task_mutex_init());
+	ESP_ERROR_CHECK(menu_option_event_group_init());
 
 	xTaskCreate(vTask_ReadMotor, "read_motor", 4096, NULL, 5, &read_motor_task_handle);
-	xTaskCreate(vTask_AssessMotorState, "assess_motor_state", 4096, NULL, 4, NULL);
+	xTaskCreate(vTask_AssessMotorState, "assess_motor_state", 2048, NULL, 4, NULL);
 	xTaskCreate(vTask_UIManager, "ui_manager", 4096, NULL, 3, NULL);
 }

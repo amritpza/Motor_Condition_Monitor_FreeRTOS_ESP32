@@ -14,7 +14,7 @@ typedef struct{
 
 void vTask_ReadMotor(void *pvParameters);
 
-BaseType_t motor_metrics_queue_receive(motor_metrics_t* const data_rx);
+BaseType_t motor_info_queue_receive(motor_metrics_t* const data_rx);
 
 esp_err_t i2c_mutex_init();
 BaseType_t take_i2c_mutex();
